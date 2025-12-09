@@ -355,3 +355,184 @@ fetch('http://localhost:3000/users/login', {
 
 - The controller explicitly selects `password` when loading the user to compare it using `user.comparePassword()` (see controller). The password is not removed from the object automatically — to fully avoid returning the password, explicitly remove it before responding, or rely on `select:false` during query instead of selecting the password back in the returned document.
 - The controller currently returns `massage` in error responses for authentication failure — you may want to change that to `message` for clarity.
+
+---
+
+## Profile Endpoint
+
+This document describes the GET `/users/profile` endpoint used to retrieve the authenticated user's profile information.
+
+### Endpoint
+
+- Path: `GET /users/profile`
+- Mounted at: `app.use('/users', userRoutes)` → full path is `/users/profile`
+- Authentication: **REQUIRED** — Must include a valid JWT token in the `Authorization` header.
+- Content-Type: `application/json`
+
+### Description
+
+Retrieves the authenticated user's profile information. This endpoint is protected and requires a valid JWT token obtained from login or registration. The middleware `authMiddleware.authUser` validates the token and attaches the user object to the request.
+
+### Request
+
+No request body is required. The token must be included in the `Authorization` header.
+
+Example request header:
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...
+```
+
+### Status Codes & Responses
+
+- 200 OK
+  - Success: returns the authenticated user's profile.
+  - Example response (200):
+
+```json
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "_id": "6471b2a0d55b9a2c1a4ef12f",
+  "fullname": {
+    "firstname": "John",
+    "lastname": "Doe"
+  },
+  "email": "john.doe@example.com",
+  "socketId": null
+}
+```
+
+- 401 Unauthorized
+  - Token is missing, invalid, or expired.
+  - Example response (401):
+
+```json
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{
+  "error": "Unauthorized"
+}
+```
+
+### Example request (curl)
+
+```bash
+curl -X GET "http://localhost:3000/users/profile" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ..." \
+  -H "Content-Type: application/json"
+```
+
+### Client Example (fetch)
+
+```js
+fetch('http://localhost:3000/users/profile', {
+  method: 'GET',
+  headers: {
+    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+    'Content-Type': 'application/json'
+  }
+})
+  .then(res => res.json())
+  .then(profile => {
+    console.log('User profile:', profile);
+  })
+  .catch(err => console.error('Error fetching profile:', err));
+```
+
+### Notes
+
+- The token should be stored securely on the client (e.g., in `localStorage` or a secure cookie) after login or registration.
+- The authentication middleware (`authMiddleware.authUser`) decodes the token and attaches the user object to `req.user`.
+- Returns the user object directly without the password (password is protected by `select: false` in the model).
+
+---
+
+## Logout Endpoint
+
+This document describes the GET `/users/logout` endpoint used to invalidate a user's JWT token by blacklisting it.
+
+### Endpoint
+
+- Path: `GET /users/logout`
+- Mounted at: `app.use('/users', userRoutes)` → full path is `/users/logout`
+- Authentication: **REQUIRED** — Must include a valid JWT token in the `Authorization` header or cookie.
+- Content-Type: `application/json`
+
+### Description
+
+Logs out the authenticated user by blacklisting their JWT token. The token is added to the blacklist collection with a TTL of 24 hours, after which it expires automatically. The endpoint also clears the token cookie (if set).
+
+### Request
+
+No request body is required. The token must be included in either:
+- `Authorization` header: `Authorization: Bearer <token>`
+- Or a `token` cookie
+
+### Status Codes & Responses
+
+- 200 OK
+  - Success: token blacklisted and user logged out.
+  - Example response (200):
+
+```json
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "message": "Logged out"
+}
+```
+
+- 401 Unauthorized
+  - Token is missing, invalid, or expired.
+  - Example response (401):
+
+```json
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{
+  "error": "Unauthorized"
+}
+```
+
+### Example request (curl)
+
+```bash
+curl -X GET "http://localhost:3000/users/logout" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ..." \
+  -H "Content-Type: application/json"
+```
+
+### Client Example (fetch)
+
+```js
+fetch('http://localhost:3000/users/logout', {
+  method: 'GET',
+  headers: {
+    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+    'Content-Type': 'application/json'
+  }
+})
+  .then(res => res.json())
+  .then(data => {
+    // Clear local storage
+    localStorage.removeItem('token');
+    console.log('Logout successful:', data);
+    // Redirect to login page or home
+    // window.location.href = '/login';
+  })
+  .catch(err => console.error('Logout error:', err));
+```
+
+### Notes
+
+- The token is blacklisted in the `BlacklistToken` collection with a TTL (time-to-live) of 24 hours.
+- After 24 hours, the blacklist entry automatically expires and is removed from the database.
+- For additional security, you may want to:
+  - Verify the token in the blacklist before allowing authenticated requests (check `authMiddleware`).
+  - Clear client-side storage (`localStorage`, `sessionStorage`, or cookies) after logout.
+  - Implement a proper authentication middleware that checks the blacklist.
+- The endpoint clears the `token` cookie if it was set via `res.clearCookie()` during login.
