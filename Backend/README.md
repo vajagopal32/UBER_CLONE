@@ -237,3 +237,121 @@ fetch('http://localhost:3000/users/register', {
 ---
 
 If you want me to also add a short Postman collection or test endpoint script, I can add those next.
+
+---
+
+## Login Endpoint
+
+This document describes the POST `/users/login` endpoint used to authenticate an existing user and issue a JWT token.
+
+### Endpoint
+
+- Path: `POST /users/login`
+- Mounted at: `app.use('/users', userRoutes)` → full path is `/users/login`
+- Content-Type: `application/json`
+
+### Description
+
+Authenticates a user using `email` and `password`. On success, returns a JWT token and the user object. If the credentials are invalid, returns a 401 Unauthorized with an error message.
+
+### Request Body (JSON)
+
+- `email` (string) - REQUIRED. Must be a valid email.
+- `password` (string) - REQUIRED. Must be at least 6 characters long.
+
+Example request:
+
+```json
+{
+  "email": "john.doe@example.com",
+  "password": "supersecret123"
+}
+```
+
+Validation (from `routes/user.routes.js`):
+- `email` is validated with `isEmail()` and emits the message: `Invaalid Email` on failure.
+- `password` is validated with `isLength({min:6})` and emits the message: `password 6 length` on failure.
+
+### Status Codes & Responses
+
+- 200 OK
+  - Success: user authenticated, token issued.
+  - Example success response (200):
+
+```json
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...",
+  "user": {
+    "_id": "6471b2a0d55b9a2c1a4ef12f",
+    "fullname": {
+      "firstname": "John",
+      "lastname": "Doe"
+    },
+    "email": "john.doe@example.com",
+    "socketId": null
+  }
+}
+```
+
+- 400 Bad Request
+  - Validation errors from `express-validator` (e.g., invalid email format, too-short password) will return a 400.
+  - Example 400 response (validation errors):
+
+```json
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{
+  "errors": [
+    { "msg": "Invaalid Email", "param": "email", "location": "body" },
+    { "msg": "password 6 length", "param": "password", "location": "body" }
+  ]
+}
+```
+
+- 401 Unauthorized
+  - Wrong email or password.
+  - Note: The current implementation returns a JSON body with a `massage` field (typo) for invalid credentials.
+  - Example 401 response:
+
+```json
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{
+  "massage": "Invalid email or password"
+}
+```
+
+### Example request (curl)
+
+```bash
+curl -X POST "http://localhost:3000/users/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "john.doe@example.com", "password": "supersecret123"}'
+```
+
+### Client Example (fetch)
+
+```js
+fetch('http://localhost:3000/users/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'john.doe@example.com', password: 'supersecret123' })
+})
+  .then(res => res.json())
+  .then(({ token, user }) => {
+    // store token and use it for subsequent authenticated requests
+    localStorage.setItem('token', token);
+    console.log('Logged in user', user);
+  })
+  .catch(err => console.error(err));
+```
+
+### Notes
+
+- The controller explicitly selects `password` when loading the user to compare it using `user.comparePassword()` (see controller). The password is not removed from the object automatically — to fully avoid returning the password, explicitly remove it before responding, or rely on `select:false` during query instead of selecting the password back in the returned document.
+- The controller currently returns `massage` in error responses for authentication failure — you may want to change that to `message` for clarity.
